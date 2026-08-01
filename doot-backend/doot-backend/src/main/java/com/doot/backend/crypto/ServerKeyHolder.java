@@ -2,7 +2,6 @@ package com.doot.backend.crypto;
 
 import jakarta.annotation.PostConstruct;
 import lombok.Getter;
-import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -10,8 +9,6 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.PrivateKey;
 import java.security.PublicKey;
-import java.util.Base64;
-import java.util.logging.Logger;
 
 @Component
 @Slf4j
