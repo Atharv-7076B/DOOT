@@ -1,6 +1,6 @@
-package com.doot.backend.Entity;
+package com.doot.backend.entity;
 
-import com.doot.backend.Enum.Status;
+import com.doot.backend.enums.Status;
 import jakarta.persistence.*;
 import lombok.*;
 

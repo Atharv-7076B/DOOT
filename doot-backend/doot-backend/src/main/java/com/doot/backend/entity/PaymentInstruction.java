@@ -1,4 +1,4 @@
-package com.doot.backend.Entity;
+package com.doot.backend.entity;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

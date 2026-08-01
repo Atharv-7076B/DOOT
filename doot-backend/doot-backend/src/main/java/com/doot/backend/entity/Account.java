@@ -1,6 +1,5 @@
-package com.doot.backend.Entity;
+package com.doot.backend.entity;
 
-import jakarta.annotation.Nullable;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;

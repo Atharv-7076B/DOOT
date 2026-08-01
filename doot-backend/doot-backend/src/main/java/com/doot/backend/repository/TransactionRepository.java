@@ -1,6 +1,6 @@
-package com.doot.backend.Repository;
+package com.doot.backend.repository;
 
-import com.doot.backend.Entity.Transactions;
+import com.doot.backend.entity.Transactions;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
