@@ -14,7 +14,7 @@ import java.time.Instant;
 public class Transactions {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private long transactionId;
+    private Long transactionId;
 
     @Column(nullable = false,unique = true,length = 64)
     private String packetHash;//Sha 256 hex of the encrypted packet
