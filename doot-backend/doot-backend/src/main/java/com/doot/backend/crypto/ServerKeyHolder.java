@@ -18,13 +18,16 @@ public class ServerKeyHolder {
 
     private KeyPair keyPair;
 
-    @PostConstruct
+    @PostConstruct//Post construct is automatically calls only one time when the bean is created and load into the IOC container
     public  void init() throws Exception{
-        KeyPairGenerator gen =KeyPairGenerator.getInstance("RSA");
-        gen.initialize(2048);
-        this.keyPair = gen.generateKeyPair();
+        KeyPairGenerator gen =KeyPairGenerator.getInstance("RSA");//Gets the instance of the RSA
+
+        gen.initialize(2048);//Key size - 2048(Standard key size is used)
+
+        this.keyPair = gen.generateKeyPair();//Generate the public and private key
+
         log.info("Server RSA keypair generated of 2048-bit. Public key:{}" ,
-                getPublicKeyBase64().substring(0,32)+ "...");
+                getPublicKeyBase64().substring(0,32)+ "...");//This is used to convert the binary values into the Text format.
     }
 
     public PublicKey getPublicKey(){
@@ -34,7 +37,7 @@ public class ServerKeyHolder {
         return keyPair.getPrivate();
     };
     public String getPublicKeyBase64(){
-        return java.util.Base64
+        return java.util.Base64//As the keys are stores in binary format so this is used to convert into text format
                 .getEncoder().encodeToString(keyPair.getPublic().getEncoded());
     }
 }
