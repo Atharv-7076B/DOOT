@@ -5,8 +5,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 
+import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
+import javax.crypto.spec.GCMParameterSpec;
 import java.security.PublicKey;
 import java.security.SecureRandom;
 
@@ -27,11 +29,21 @@ public class HybridCryptoService {
     private ServerKeyHolder serverKeyHolder;
 
     public String encrypt(PaymentInstruction paymentInstruction, PublicKey serverPublicKey) throws Exception{
+        byte[]plainText =json.writeValueAsBytes(paymentInstruction);
+
         //1.Create the AES Key
         KeyGenerator keyGen = KeyGenerator.getInstance("AES");
         keyGen.init(AES_KEY_BITS);
         SecretKey aesKey = keyGen.generateKey();
 
+        //2.AES-GCM encrypts the payload
+        byte[] iv = new byte[GCM_IV_BYTES];
+        rng.nextBytes(iv);
+        Cipher aes = Cipher.getInstance(AES_TRANSFORMATION);
+        aes.init(Cipher.ENCRYPT_MODE,aesKey,new GCMParameterSpec(GCM_TAG_BITS,iv));
+        byte[] aesCipherText = aes.doFinal(plainText);
+
+        //3.
 
     }
 
