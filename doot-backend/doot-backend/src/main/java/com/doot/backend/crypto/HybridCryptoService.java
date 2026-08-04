@@ -85,9 +85,9 @@ public class HybridCryptoService {
         byte[] aesKey = new byte[all.length - RSA_ENCRYPTED_KEY_BYTES - GCM_IV_BYTES];
 
         ByteBuffer buf = ByteBuffer.wrap(all);
-        buf.put(encryptedText);
-        buf.put(iv);
-        buf.put(aesKey);
+        buf.get(encryptedText);
+        buf.get(iv);
+        buf.get(aesKey);
 
         // 1. RSA-decrypt the AES key.
         Cipher rsa = Cipher.getInstance(RSA_TRANSFORMATION);
