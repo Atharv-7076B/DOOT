@@ -23,7 +23,7 @@ import java.util.Base64;
 public class HybridCryptoService {
 
     private static final String RSA_TRANSFORMATION = "RSA/ECB/OAEPWithSHA-256AndMGF1Padding";
-    private static final String AES_TRANSFORMATION = "AES/CBC/NoPadding";
+    private static final String AES_TRANSFORMATION = "AES/GCM/NoPadding";
     private static final int AES_KEY_BITS = 256;
     private static final int GCM_IV_BYTES = 12;
     private static final int GCM_TAG_BITS = 128;
