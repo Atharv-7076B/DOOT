@@ -10,7 +10,7 @@ import java.util.Optional;
 public interface AccountService {
     List<Account>getAllAccount();
 
-    Optional<Account> getAccountByVpa(String vpa) throws AccountNotFoundException;
+    Account getAccountByVpa(String vpa) throws AccountNotFoundException;
 
     void debitAccount(String vpa, BigDecimal amount) throws AccountNotFoundException;
     void creditAccount(String vpa,BigDecimal amount);

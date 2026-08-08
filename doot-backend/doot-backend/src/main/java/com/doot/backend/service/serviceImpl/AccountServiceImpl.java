@@ -26,8 +26,8 @@ public class AccountServiceImpl implements AccountService {
     }
 
     @Override
-    public Optional<Account> getAccountByVpa(String vpa){
-        return Optional.of(findAccount(vpa));
+    public Account getAccountByVpa(String vpa){
+        return findAccount(vpa);
     }
 
     @Override
