@@ -8,6 +8,7 @@ import com.doot.backend.entity.MeshPacket;
 import com.doot.backend.entity.PaymentInstruction;
 import com.doot.backend.exception.BalanceLessThanAmountException;
 import com.doot.backend.service.AccountService;
+import com.doot.backend.service.MeshService;
 import com.doot.backend.service.PaymentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -22,6 +23,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final AccountService accountService;
     private final ServerKeyHolder serverKeyHolder;
     private final HybridCryptoService hybridCryptoService;
+    private final MeshService meshService;
 
     @Override
     public MeshPacket createPayment(PaymentRequest request) throws Exception {
@@ -60,6 +62,6 @@ public class PaymentServiceImpl implements PaymentService {
         meshPacket.setCipherText(cipherText);
         meshPacket.setCreatedAt(Instant.now());
 
-        return meshPacket;
+        return meshService.injectPacket(meshPacket);
     }
 }
