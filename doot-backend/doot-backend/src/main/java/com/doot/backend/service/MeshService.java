@@ -5,6 +5,6 @@ public interface MeshService {
 
     MeshPacket injectPacket(MeshPacket packet);
 
-    void gossip();
+    void gossip(MeshPacket packet , String currNode);
 
 }
