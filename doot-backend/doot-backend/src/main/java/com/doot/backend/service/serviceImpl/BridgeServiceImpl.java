@@ -39,7 +39,7 @@ public class BridgeServiceImpl implements BridgeService {
         //Create the hash of the packet and store it in redis to avoid replay attacks
         String packetHash = hybridCryptoService.hashCipherText(packet.getCipherText());
 
-        String key = "processed:"+packetHash;
+        String key = "processed:" + packetHash;
 
         //Check replay attack
         Boolean alreadyProcessed = redisTemplate.hasKey(key);
@@ -53,7 +53,11 @@ public class BridgeServiceImpl implements BridgeService {
         Account receiver = accountService.getAccountByVpa(paymentInstruction.getReceiverVpa());
 
 
+        //Debit and credit the accounts
+        accountService.debitAccount(sender.getVpa(),paymentInstruction.getAmount());
+        accountService.creditAccount(receiver.getVpa(),paymentInstruction.getAmount());
 
-
+        //Mark the packet as processed
+        redisTemplate.opsForValue().set(key,"processed",24,TimeUnit.HOURS);
     }
 }
