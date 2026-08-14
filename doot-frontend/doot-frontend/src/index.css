@@ -1,0 +1,116 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* shadcn-convention tokens, expressed as raw HSL triplets */
+    --background: 220 45% 3%;
+    --foreground: 220 60% 94%;
+
+    --card: 222 40% 6%;
+    --card-foreground: 220 60% 94%;
+
+    --popover: 222 40% 7%;
+    --popover-foreground: 220 60% 94%;
+
+    --primary: 221 92% 62%;
+    --primary-foreground: 220 60% 98%;
+
+    --secondary: 222 30% 14%;
+    --secondary-foreground: 220 60% 94%;
+
+    --muted: 222 25% 12%;
+    --muted-foreground: 220 14% 60%;
+
+    --accent: 222 30% 14%;
+    --accent-foreground: 220 60% 94%;
+
+    --destructive: 0 84% 71%;
+    --destructive-foreground: 220 60% 98%;
+
+    --border: 220 25% 100% / 0.08;
+    --border-soft: 220 25% 100% / 0.05;
+    --input: 222 30% 14%;
+    --ring: 221 92% 62%;
+
+    --surface: 220 45% 100% / 0.035;
+    --surface-hover: 220 45% 100% / 0.06;
+    --surface-elevated: 222 40% 8%;
+
+    /* DOOT network / domain palette */
+    --mesh-blue: 221 92% 62%;
+    --mesh-cyan: 187 85% 53%;
+    --mesh-purple: 271 81% 66%;
+    --mesh-green: 158 64% 52%;
+    --mesh-amber: 43 96% 62%;
+    --mesh-red: 0 91% 74%;
+
+    --radius: 0.75rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    background-image:
+      radial-gradient(ellipse 900px 500px at 15% -10%, hsl(var(--mesh-blue) / 0.14), transparent),
+      radial-gradient(ellipse 700px 500px at 90% 0%, hsl(var(--mesh-purple) / 0.1), transparent),
+      radial-gradient(ellipse 1000px 700px at 50% 100%, hsl(var(--mesh-cyan) / 0.05), transparent);
+    background-attachment: fixed;
+    background-color: hsl(var(--background));
+  }
+
+  ::selection {
+    background: hsl(var(--mesh-blue) / 0.35);
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(220 25% 100% / 0.12);
+    border-radius: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-display tracking-tight;
+  }
+
+  code,
+  kbd,
+  samp {
+    @apply font-mono;
+  }
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-surface border border-border backdrop-blur-xl;
+  }
+
+  .text-eyebrow {
+    @apply font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
