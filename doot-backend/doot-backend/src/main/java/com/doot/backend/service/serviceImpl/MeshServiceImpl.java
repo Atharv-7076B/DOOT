@@ -25,7 +25,7 @@ public class MeshServiceImpl implements MeshService {
             "D", List.of("B", "C")
     );
 
-    // For V1, D is the bridge node
+    // D is the bridge node
     private static final String BRIDGE_NODE = "D";
 
     @Override
