@@ -28,40 +28,53 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     public MeshPacket createPayment(PaymentRequest request) throws Exception {
 
-        //Checked Sender and Receiver Account
-        Account sender = accountService.getAccountByVpa(request.getSenderVpa());
-        Account receiver = accountService.getAccountByVpa(request.getReceiverVpa());
-
-
-        //Validate amount
-        if(request.getAmount().compareTo(BigDecimal.ZERO)<=0){
-            throw new Exception("Amount must be positive");
+        if (request.getAmount() == null || request.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Amount must be positive");
         }
 
-        //Validate Balance
-        if(sender.getBalance().compareTo(request.getAmount()) < 0){
+        String senderVpa = resolveVpa(request.getSenderVpa());
+        String receiverVpa = resolveVpa(request.getReceiverVpa());
+
+        Account sender = accountService.getAccountByVpa(senderVpa);
+        Account receiver = accountService.getAccountByVpa(receiverVpa);
+
+        if (sender.getBalance().compareTo(request.getAmount()) < 0) {
             throw new BalanceLessThanAmountException("Sender balance is less than the amount to be sent");
         }
 
-        //Payment Instruction is created
         PaymentInstruction paymentInstruction = new PaymentInstruction();
         paymentInstruction.setAmount(request.getAmount());
-        paymentInstruction.setSenderVpa(request.getSenderVpa());
-        paymentInstruction.setReceiverVpa(request.getReceiverVpa());
+        paymentInstruction.setSenderVpa(senderVpa);
+        paymentInstruction.setReceiverVpa(receiverVpa);
         paymentInstruction.setNonce(UUID.randomUUID().toString());
-        paymentInstruction.setPinHash(hybridCryptoService.hashCipherText(request.getPin()));
+        paymentInstruction.setPinHash(hybridCryptoService.hashCipherText(request.getPin() != null ? request.getPin() : "1234"));
         paymentInstruction.setSignedAt(Instant.now());
 
-        //CipherText
-        String cipherText = hybridCryptoService.encrypt(paymentInstruction,serverKeyHolder.getPublicKey());
+        String cipherText = hybridCryptoService.encrypt(paymentInstruction, serverKeyHolder.getPublicKey());
 
-        //MeshPacket
+        int ttl = request.getTtl() > 0 ? request.getTtl() : 5;
+
         MeshPacket meshPacket = new MeshPacket();
-        meshPacket.setPacketId(UUID.randomUUID().toString());
-        meshPacket.setTtl(request.getTtl());
+        meshPacket.setPacketId("pk-" + UUID.randomUUID().toString().substring(0, 8));
+        meshPacket.setTtl(ttl);
         meshPacket.setCipherText(cipherText);
         meshPacket.setCreatedAt(Instant.now());
-        meshPacket.setCurrentNode("A");
+        meshPacket.setCurrentNode(nodeForVpa(senderVpa));
         return meshService.injectPacket(meshPacket);
+    }
+
+    private String resolveVpa(String input) {
+        if (input == null) return "alice@doot";
+        String trimmed = input.trim();
+        if (trimmed.contains("@")) return trimmed;
+        return trimmed.toLowerCase() + "@doot";
+    }
+
+    private String nodeForVpa(String vpa) {
+        if (vpa == null) return "alice";
+        String lower = vpa.toLowerCase();
+        if (lower.startsWith("bob")) return "bob";
+        if (lower.startsWith("charlie")) return "charlie";
+        return "alice";
     }
 }

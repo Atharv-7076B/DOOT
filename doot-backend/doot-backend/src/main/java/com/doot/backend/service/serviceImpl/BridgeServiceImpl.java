@@ -10,59 +10,67 @@ import com.doot.backend.repository.TransactionRepository;
 import com.doot.backend.service.AccountService;
 import com.doot.backend.service.BridgeService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class BridgeServiceImpl implements BridgeService {
     private final TransactionRepository transactionRepository;
     private final RedisTemplate<String,String> redisTemplate;
     private final HybridCryptoService hybridCryptoService;
     private final AccountService accountService;
 
+    private final Set<String> inMemoryProcessedSet = ConcurrentHashMap.newKeySet();
+
     @Override
+    @Transactional
     public void processPacket(MeshPacket packet) throws Exception {
-        //Decrypt the packer
         PaymentInstruction paymentInstruction = hybridCryptoService.decrypt(packet.getCipherText());
 
-        //Validate payment insturction
         long now = Instant.now().toEpochMilli();
-        long maxAge =  24 * 60 * 60 * 1000L;//24 hrs in milisec
+        long maxAge = 24 * 60 * 60 * 1000L;
         long age = now - paymentInstruction.getSignedAt().toEpochMilli();
 
-
-        if(age > maxAge || age < 0){
-            throw new Exception("Payment instruction is expired or signedAt is in the future");
+        if (age > maxAge || age < 0) {
+            throw new IllegalArgumentException("Payment instruction is expired or signedAt is in the future");
         }
 
-        //Create the hash of the packet and store it in redis to avoid replay attacks
         String packetHash = hybridCryptoService.hashCipherText(packet.getCipherText());
 
-        String key = "processed:" + packetHash;
-
-        //Check replay attack
-        Boolean alreadyProcessed = redisTemplate.hasKey(key);
-
-        if(Boolean.TRUE.equals(alreadyProcessed)){
-            throw new Exception("Packet has already been processed");
+        // Replay check via DB and Redis/in-memory
+        if (transactionRepository.existsByPacketHash(packetHash) || inMemoryProcessedSet.contains(packetHash)) {
+            throw new IllegalArgumentException("Packet has already been processed");
         }
 
-        //Get the accounts
+        String key = "processed:" + packetHash;
+        try {
+            Boolean alreadyProcessed = redisTemplate.hasKey(key);
+            if (Boolean.TRUE.equals(alreadyProcessed)) {
+                throw new IllegalArgumentException("Packet has already been processed");
+            }
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            log.debug("Redis unavailable for replay check");
+        }
+
         Account sender = accountService.getAccountByVpa(paymentInstruction.getSenderVpa());
         Account receiver = accountService.getAccountByVpa(paymentInstruction.getReceiverVpa());
 
+        accountService.debitAccount(sender.getVpa(), paymentInstruction.getAmount());
+        accountService.creditAccount(receiver.getVpa(), paymentInstruction.getAmount());
 
-        //Debit and credit the accounts
-        accountService.debitAccount(sender.getVpa(),paymentInstruction.getAmount());
-        accountService.creditAccount(receiver.getVpa(),paymentInstruction.getAmount());
-
-        //After settlement we can save the transaction
         Transactions settledTransaction = new Transactions();
-        settledTransaction.setBridgeNodeId(packet.getBridgeNodeId());
+        settledTransaction.setBridgeNodeId(packet.getBridgeNodeId() != null ? packet.getBridgeNodeId() : "bridge");
         settledTransaction.setPacketHash(packetHash);
         settledTransaction.setSettledAt(Instant.now());
         settledTransaction.setSenderVpa(paymentInstruction.getSenderVpa());
@@ -73,7 +81,11 @@ public class BridgeServiceImpl implements BridgeService {
         settledTransaction.setStatus(Status.SETTLED);
         transactionRepository.save(settledTransaction);
 
-        //Mark the packet as processed
-        redisTemplate.opsForValue().set(key,"processed",24,TimeUnit.HOURS);
+        inMemoryProcessedSet.add(packetHash);
+        try {
+            redisTemplate.opsForValue().set(key, "processed", 24, TimeUnit.HOURS);
+        } catch (Exception e) {
+            log.debug("Redis unavailable for marking processed");
+        }
     }
 }

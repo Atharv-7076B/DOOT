@@ -89,7 +89,7 @@ export function useMeshSimulation({ onSettlementBatch }: UseMeshSimulationOption
     const hopBudgetUsed = Math.floor(Math.random() * 3) + 1;
     const hash = `${randomHex(8)}${randomHex(4)}`;
     const packetId = `pk-${packetSeqRef.current++}`;
-    const color = `hsl(${{ alice: 221, bob: 187, charlie: 271 }[from]}, 85%, 60%)`;
+    const color = `hsl(${{ alice: 221, bob: 187, charlie: 271, bridge: 140 }[from]}, 85%, 60%)`;
 
     const packet: SimulatedPacket = {
       id: packetId,

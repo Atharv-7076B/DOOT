@@ -1,5 +1,6 @@
 package com.doot.backend.entity;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.doot.backend.enums.Status;
 import jakarta.persistence.*;
 import lombok.*;
@@ -45,6 +46,20 @@ public class Transactions {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private Status Status;
+    private Status status;
 
+    @JsonProperty("id")
+    public Long getId() {
+        return transactionId;
+    }
+
+    @JsonProperty("sender")
+    public String getSender() {
+        return senderVpa;
+    }
+
+    @JsonProperty("receiver")
+    public String getReceiver() {
+        return receiverVpa;
+    }
 }

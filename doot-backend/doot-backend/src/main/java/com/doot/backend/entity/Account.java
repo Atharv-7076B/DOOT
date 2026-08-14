@@ -30,5 +30,9 @@ public class Account {
     @Version
     private long version;
 
+    public int getId() {
+        return vpa != null ? Math.abs(vpa.hashCode()) % 1000 + 1 : 1;
+    }
+
 
 }

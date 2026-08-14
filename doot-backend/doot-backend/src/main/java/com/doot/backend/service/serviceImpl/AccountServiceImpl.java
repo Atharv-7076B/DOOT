@@ -2,7 +2,7 @@ package com.doot.backend.service.serviceImpl;
 
 import com.doot.backend.entity.Account;
 import com.doot.backend.exception.AccountNotFoundException;
-import com.doot.backend.exception.BalanceLessThanAmount;
+import com.doot.backend.exception.BalanceLessThanAmountException;
 import com.doot.backend.repository.AccountRepository;
 import com.doot.backend.service.AccountService;
 import jakarta.transaction.Transactional;
@@ -35,7 +35,7 @@ public class AccountServiceImpl implements AccountService {
         Account account = findAccount(vpa);
         BigDecimal balance = account.getBalance();
         if(balance.compareTo(amount) < 0){
-            throw new BalanceLessThanAmount("Balance is less than the amount to be debited");
+            throw new BalanceLessThanAmountException("Balance is less than the amount to be debited");
         }
         account.setBalance(account.getBalance().subtract(amount));
         accountRepository.save(account);

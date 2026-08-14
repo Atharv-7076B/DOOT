@@ -5,12 +5,12 @@ import {
   BackgroundVariant,
   type NodeTypes,
 } from "@xyflow/react";
-import { getDeviceLayout, interpolatePoint } from "./layout";
+import { getDeviceLayout, interpolatePoint, type Point } from "./layout";
 import { DeviceNode } from "./DeviceNode";
 import { PacketNode } from "./PacketNode";
 import type { AnimatedPacket, MeshEdge, MeshNode } from "./types";
 import { MESH_EDGES } from "@/lib/constants";
-import type { DeviceProfile } from "@/types/network";
+import type { DeviceId, DeviceProfile } from "@/types/network";
 
 // Defined once at module scope — React Flow warns (and re-renders needlessly)
 // if nodeTypes/edgeTypes are recreated on every render.
@@ -25,6 +25,15 @@ interface MeshGraphProps {
   animatedPackets: AnimatedPacket[];
 }
 
+function getPointForDevice(layout: Record<DeviceId, Point>, deviceId: string): Point {
+  if (!deviceId) return { x: 40, y: 40 };
+  const key = deviceId.split('@')[0]?.toLowerCase() as DeviceId;
+  if (key in layout) {
+    return layout[key];
+  }
+  return { x: 40, y: 40 };
+}
+
 export function MeshGraph({
   devices,
   relayingDeviceIds,
@@ -34,30 +43,33 @@ export function MeshGraph({
 
   const deviceNodes: MeshNode[] = useMemo(
     () =>
-      Object.values(devices).map((profile) => ({
-        id: profile.id,
-        type: "device",
-        position: layout[profile.id],
-        data: {
-          kind: "device",
-          profile,
-          connectivity: profile.connectivity,
-          isRelaying: relayingDeviceIds.has(profile.id),
-        },
-        draggable: false,
-        selectable: false,
-        connectable: false,
-      })),
-    // layout is static; devices/relaying state drive re-computation
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [devices, relayingDeviceIds],
+      Object.values(devices).map((profile) => {
+        const pos = getPointForDevice(layout, profile.id);
+        return {
+          id: profile.id,
+          type: "device",
+          position: pos,
+          data: {
+            kind: "device",
+            profile,
+            connectivity: profile.connectivity,
+            isRelaying: relayingDeviceIds.has(profile.id),
+          },
+          draggable: false,
+          selectable: false,
+          connectable: false,
+        };
+      }),
+    [devices, layout, relayingDeviceIds],
   );
 
   const packetNodes: MeshNode[] = useMemo(
     () =>
       animatedPackets.map((packet) => {
-        const from = centerOf(layout[packet.from]);
-        const to = centerOf(layout[packet.to]);
+        const fromPos = getPointForDevice(layout, packet.from);
+        const toPos = getPointForDevice(layout, packet.to);
+        const from = centerOf(fromPos);
+        const to = centerOf(toPos);
         const point = interpolatePoint(from, to, packet.progress);
         return {
           id: `packet-${packet.id}`,
@@ -124,7 +136,8 @@ export function MeshGraph({
   );
 }
 
-function centerOf(point: { x: number; y: number }) {
+function centerOf(point: Point): Point {
   // Nodes render ~40px wide; nudge the interpolated packet path to the visual center.
   return { x: point.x + 16, y: point.y + 16 };
 }
+

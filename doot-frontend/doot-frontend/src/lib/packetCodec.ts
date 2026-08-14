@@ -48,7 +48,7 @@ export function decodePacketSegments(ciphertextBase64: string): DecodedPacketSeg
  */
 export async function computePacketHash(ciphertextBase64: string): Promise<string> {
   const bytes = base64ToBytes(ciphertextBase64);
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  const digest = await crypto.subtle.digest('SHA-256', bytes.buffer as ArrayBuffer);
   return Array.from(new Uint8Array(digest))
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');

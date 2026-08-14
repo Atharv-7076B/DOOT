@@ -3,7 +3,7 @@ package com.doot.backend.crypto;
 import com.doot.backend.entity.PaymentInstruction;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
@@ -54,7 +54,7 @@ public class HybridCryptoService {
         // 3. RSA-OAEP encrypt the AES key with the server's public key.
         Cipher rsa =Cipher.getInstance(RSA_TRANSFORMATION);
         OAEPParameterSpec oeap = new OAEPParameterSpec(
-"SHA-256","MFG1", MGF1ParameterSpec.SHA256, PSource.PSpecified.DEFAULT);
+"SHA-256","MGF1", MGF1ParameterSpec.SHA256, PSource.PSpecified.DEFAULT);
         rsa.init(Cipher.ENCRYPT_MODE,serverPublicKey,oeap);
         byte [] encryptedAesKey = rsa.doFinal(aesKey.getEncoded());
 

@@ -1,0 +1,71 @@
+
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: doot-postgres
+    environment:
+      POSTGRES_DB: doot
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d doot"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: doot-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redisinsight:
+    image: redis/redisinsight:latest
+    container_name: doot-redisinsight
+    ports:
+      - "5540:5540"
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  doot-backend:
+    build:
+      context: ./doot-backend/doot-backend
+      dockerfile: Dockerfile
+    container_name: doot-backend
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/doot
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  doot-frontend:
+    build:
+      context: ./doot-frontend/doot-frontend
+      dockerfile: Dockerfile
+    container_name: doot-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - doot-backend
+
+volumes:
+  postgres_data:

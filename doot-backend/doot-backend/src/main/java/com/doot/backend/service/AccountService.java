@@ -2,7 +2,7 @@ package com.doot.backend.service;
 
 import com.doot.backend.entity.Account;
 
-import javax.security.auth.login.AccountNotFoundException;
+import com.doot.backend.exception.AccountNotFoundException;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;

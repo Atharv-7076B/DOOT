@@ -1,5 +1,6 @@
 package com.doot.backend.entity;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -17,6 +18,7 @@ public class MeshPacket {
     private String packetId;//Unique packet identifier
     private int ttl;//It tells hops remaining
     private Instant createdAt;//Time when the packet it created
+    @JsonProperty("ciphertext")
     private String cipherText;//Base64(RSA-encrypted AES key + AES-GCM ciphertext)
     private int hopCount;
     private String bridgeNodeId;
