@@ -14,7 +14,11 @@ export class ApiError extends Error {
  * in dev, see vite.config.ts) so no CORS configuration is needed.
  */
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`/api${path}`, {
+  const url = path.startsWith('/api')
+    ? path
+    : `/api${path.startsWith('/') ? '' : '/'}${path}`;
+
+  const response = await fetch(url, {
     headers: {
       'Content-Type': 'application/json',
       ...init?.headers,

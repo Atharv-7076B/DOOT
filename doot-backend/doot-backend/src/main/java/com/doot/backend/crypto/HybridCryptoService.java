@@ -30,7 +30,8 @@ public class HybridCryptoService {
     private static final int RSA_ENCRYPTED_KEY_BYTES = 256; // for 2048-bit RSA
 
     private final SecureRandom rng = new SecureRandom();
-    private final ObjectMapper json = new ObjectMapper();
+    private final ObjectMapper json = new ObjectMapper()
+            .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
 
     @Autowired
     private ServerKeyHolder serverKeyHolder;
