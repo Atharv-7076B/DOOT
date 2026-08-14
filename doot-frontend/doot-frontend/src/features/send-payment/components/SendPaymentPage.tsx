@@ -89,9 +89,13 @@ export function SendPaymentPage() {
               </CardTitle>
             </CardHeader>
             <PaymentLifecycle stage={stage} isSubmitting={isSubmitting} isGossiping={isGossiping} isFlushing={isFlushing} />
-            {stage === 'bridged' ? (
+            {stage === 'settled' ? (
+              <p className="mt-5 text-center text-xs text-mesh-green font-medium">
+                Payment settled automatically! Check <span className="underline">Transactions</span> for the record.
+              </p>
+            ) : stage === 'bridged' ? (
               <p className="mt-5 text-center text-xs text-muted-foreground">
-                Uploaded to the backend. Check <span className="text-foreground">Transactions</span> for the settlement outcome.
+                Reached bridge node. Processing automatic settlement...
               </p>
             ) : null}
           </Card>

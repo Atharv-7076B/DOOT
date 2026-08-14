@@ -1,14 +1,14 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/api/client';
 import { queryKeys } from '@/api/queryKeys';
-import type { SendPaymentRequest } from '@/types/api';
+import type { SendPaymentRequest, MeshPacketDto } from '@/types/api';
 
 export function useSendPayment() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (payload: SendPaymentRequest) =>
-      apiFetch<unknown>('/demo/send', {
+      apiFetch<MeshPacketDto>('/demo/send', {
         method: 'POST',
         body: JSON.stringify(payload),
       }),

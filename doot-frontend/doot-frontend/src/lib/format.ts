@@ -1,6 +1,7 @@
 /** Format a number as Indian Rupees, e.g. formatCurrency(4200) -> "₹4,200" */
-export function formatCurrency(amount: number): string {
-  return `₹${amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+export function formatCurrency(amount: number = 0): string {
+  const val = typeof amount === 'number' && !isNaN(amount) ? amount : 0;
+  return `₹${val.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 }
 
 /** Format a signed currency delta, e.g. formatCurrencyDelta(500) -> "+₹500" */

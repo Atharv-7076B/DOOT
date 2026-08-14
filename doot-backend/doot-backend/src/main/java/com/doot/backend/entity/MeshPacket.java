@@ -7,7 +7,8 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.Instant;
-
+import java.util.ArrayList;
+import java.util.List;
 
 @Getter
 @Setter
@@ -23,4 +24,6 @@ public class MeshPacket {
     private int hopCount;
     private String bridgeNodeId;
     private String currentNode;
+    private List<String> visitedNodes = new ArrayList<>();
 }
+

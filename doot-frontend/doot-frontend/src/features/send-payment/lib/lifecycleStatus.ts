@@ -11,10 +11,13 @@ export interface LifecycleContext {
 
 /** Returns one status per stage: [Payment, Encryption, Mesh, Bridge, Settlement]. */
 export function getLifecycleStepStatuses(ctx: LifecycleContext): StepStatus[] {
-  const { stage, isSubmitting, isGossiping, isFlushing } = ctx;
+  const { stage, isSubmitting } = ctx;
 
   if (stage === 'error') {
-    return ['error', 'pending', 'pending', 'pending', 'pending'];
+    return ['error', 'error', 'pending', 'pending', 'pending'];
+  }
+  if (stage === 'expired') {
+    return ['complete', 'complete', 'error', 'pending', 'pending'];
   }
   if (stage === 'idle') {
     return isSubmitting
@@ -22,11 +25,16 @@ export function getLifecycleStepStatuses(ctx: LifecycleContext): StepStatus[] {
       : ['pending', 'pending', 'pending', 'pending', 'pending'];
   }
   if (stage === 'in-mesh') {
-    return ['complete', 'complete', isGossiping ? 'active' : 'active', 'pending', 'pending'];
+    return ['complete', 'complete', 'active', 'pending', 'pending'];
   }
   if (stage === 'relaying') {
-    return ['complete', 'complete', 'complete', isFlushing ? 'active' : 'active', 'pending'];
+    return ['complete', 'complete', 'complete', 'pending', 'pending'];
   }
-  // 'bridged' — uploaded to backend; settlement outcome lives on the Transactions page
-  return ['complete', 'complete', 'complete', 'complete', 'active'];
+  if (stage === 'bridged') {
+    return ['complete', 'complete', 'complete', 'active', 'pending'];
+  }
+  if (stage === 'settled') {
+    return ['complete', 'complete', 'complete', 'complete', 'complete'];
+  }
+  return ['pending', 'pending', 'pending', 'pending', 'pending'];
 }

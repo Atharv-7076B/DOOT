@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -27,16 +28,17 @@ public class MeshServiceImpl implements MeshService {
     private final Map<String, MeshPacket> inMemoryPackets = new ConcurrentHashMap<>();
     private final Set<String> inMemoryActiveSet = ConcurrentHashMap.newKeySet();
     private final Set<String> inMemorySeenSet = ConcurrentHashMap.newKeySet();
+    private final Map<String, Map<String, Object>> inMemoryStatusMap = new ConcurrentHashMap<>();
 
     // Topology mapping: alice (A), bob (B), charlie (C), bridge (D)
     private final Map<String, List<String>> neighbors = Map.of(
             "alice", List.of("bob", "charlie"),
-            "bob", List.of("alice", "charlie", "bridge"),
-            "charlie", List.of("alice", "bob", "bridge"),
+            "bob", List.of("bridge", "charlie", "alice"),
+            "charlie", List.of("bridge", "bob", "alice"),
             "bridge", List.of("bob", "charlie"),
             "A", List.of("B", "C"),
-            "B", List.of("A", "C", "D"),
-            "C", List.of("A", "B", "D"),
+            "B", List.of("D", "C", "A"),
+            "C", List.of("D", "B", "A"),
             "D", List.of("B", "C")
     );
 
@@ -63,6 +65,13 @@ public class MeshServiceImpl implements MeshService {
             packet.setCurrentNode(normalizeNode(packet.getCurrentNode()));
         }
 
+        if (packet.getVisitedNodes() == null) {
+            packet.setVisitedNodes(new ArrayList<>());
+        }
+        if (packet.getVisitedNodes().isEmpty() || !packet.getVisitedNodes().contains(packet.getCurrentNode())) {
+            packet.getVisitedNodes().add(packet.getCurrentNode());
+        }
+
         String packetId = packet.getPacketId();
         String key = "packet:" + packetId;
 
@@ -76,6 +85,7 @@ public class MeshServiceImpl implements MeshService {
             log.debug("Redis unavailable, stored in memory: {}", e.getMessage());
         }
 
+        setPaymentStatus(packetId, "IN_MESH", false, null);
         log.info("Injected packet {} into node {}", packetId, packet.getCurrentNode());
         return packet;
     }
@@ -90,6 +100,7 @@ public class MeshServiceImpl implements MeshService {
         if (packet.getTtl() <= 0) {
             log.info("Packet {} expired (TTL <= 0). Cleaning up.", packetId);
             removePacket(packetId);
+            setPaymentStatus(packetId, "EXPIRED", true, "Packet TTL expired in mesh");
             return;
         }
 
@@ -124,8 +135,10 @@ public class MeshServiceImpl implements MeshService {
             try {
                 bridgeService.processPacket(packet);
                 removePacket(packetId);
+                setPaymentStatus(packetId, "SETTLED", true, null);
                 log.info("Packet {} successfully settled at bridge", packetId);
             } catch (Exception e) {
+                setPaymentStatus(packetId, "ERROR", true, e.getMessage());
                 log.error("Failed to process packet {} at bridge: {}", packetId, e.getMessage());
             }
             return;
@@ -159,6 +172,16 @@ public class MeshServiceImpl implements MeshService {
         packet.setHopCount(packet.getHopCount() + 1);
         packet.setCurrentNode(nextHop);
 
+        if (packet.getVisitedNodes() == null) {
+            packet.setVisitedNodes(new ArrayList<>());
+        }
+        if (!packet.getVisitedNodes().contains(nextHop)) {
+            packet.getVisitedNodes().add(nextHop);
+        }
+
+        String stage = isBridgeNode(nextHop) ? "BRIDGED" : "RELAYING";
+        setPaymentStatus(packetId, stage, false, null);
+
         log.info("Node {} gossiping packet {} -> {} | TTL: {} | Hops: {}",
                 currentNode, packetId, nextHop, packet.getTtl(), packet.getHopCount());
 
@@ -169,6 +192,65 @@ public class MeshServiceImpl implements MeshService {
         } catch (Exception e) {
             // Redis fallback
         }
+    }
+
+    @Override
+    public MeshPacket getPacket(String packetId) {
+        if (packetId == null) return null;
+        try {
+            MeshPacket packet = redisTemplate.opsForValue().get("packet:" + packetId);
+            if (packet != null) return packet;
+        } catch (Exception e) {
+            // Redis fallback
+        }
+        return inMemoryPackets.get(packetId);
+    }
+
+    @Override
+    public void setPaymentStatus(String packetId, String stage, boolean completed, String errorMessage) {
+        if (packetId == null) return;
+        MeshPacket activePacket = getPacket(packetId);
+        Map<String, Object> statusMap = new HashMap<>();
+        statusMap.put("packetId", packetId);
+        statusMap.put("stage", stage);
+        statusMap.put("completed", completed);
+        statusMap.put("errorMessage", errorMessage);
+        if (activePacket != null) {
+            statusMap.put("currentNode", activePacket.getCurrentNode());
+            statusMap.put("hopCount", activePacket.getHopCount());
+            statusMap.put("ttl", activePacket.getTtl());
+        }
+        inMemoryStatusMap.put(packetId, statusMap);
+    }
+
+    @Override
+    public Map<String, Object> getPaymentStatus(String packetId) {
+        if (packetId == null) return Map.of("stage", "UNKNOWN", "completed", true);
+        Map<String, Object> cached = inMemoryStatusMap.get(packetId);
+        if (cached != null) {
+            MeshPacket active = getPacket(packetId);
+            if (active != null) {
+                Map<String, Object> live = new HashMap<>(cached);
+                live.put("currentNode", active.getCurrentNode());
+                live.put("hopCount", active.getHopCount());
+                live.put("ttl", active.getTtl());
+                return live;
+            }
+            return cached;
+        }
+        MeshPacket active = getPacket(packetId);
+        if (active != null) {
+            String stage = isBridgeNode(active.getCurrentNode()) ? "BRIDGED" : (active.getHopCount() > 0 ? "RELAYING" : "IN_MESH");
+            return Map.of(
+                    "packetId", packetId,
+                    "stage", stage,
+                    "completed", false,
+                    "currentNode", active.getCurrentNode(),
+                    "hopCount", active.getHopCount(),
+                    "ttl", active.getTtl()
+            );
+        }
+        return Map.of("packetId", packetId, "stage", "SETTLED", "completed", true);
     }
 
     @Override
@@ -188,10 +270,10 @@ public class MeshServiceImpl implements MeshService {
         }
 
         List<VirtualDeviceDto> result = new ArrayList<>();
-        result.add(new VirtualDeviceDto("alice", false, devicePacketsMap.get("alice")));
-        result.add(new VirtualDeviceDto("bob", false, devicePacketsMap.get("bob")));
-        result.add(new VirtualDeviceDto("charlie", false, devicePacketsMap.get("charlie")));
-        result.add(new VirtualDeviceDto("bridge", true, devicePacketsMap.get("bridge")));
+        result.add(new VirtualDeviceDto("alice", "Alice", "alice@doot", true, false, false, new BigDecimal("4200.00"), List.of("bob", "charlie"), devicePacketsMap.get("alice")));
+        result.add(new VirtualDeviceDto("bob", "Bob", "bob@doot", true, false, false, new BigDecimal("3150.00"), List.of("bridge", "charlie", "alice"), devicePacketsMap.get("bob")));
+        result.add(new VirtualDeviceDto("charlie", "Charlie", "charlie@doot", true, false, false, new BigDecimal("1875.00"), List.of("bridge", "bob", "alice"), devicePacketsMap.get("charlie")));
+        result.add(new VirtualDeviceDto("bridge", "Bridge", "bridge@doot", true, true, true, new BigDecimal("0.00"), List.of("bob", "charlie"), devicePacketsMap.get("bridge")));
 
         return result;
     }
@@ -213,7 +295,9 @@ public class MeshServiceImpl implements MeshService {
                     packet.setBridgeNodeId(normalizeNode(packet.getCurrentNode()));
                     bridgeService.processPacket(packet);
                     removePacket(packet.getPacketId());
+                    setPaymentStatus(packet.getPacketId(), "SETTLED", true, null);
                 } catch (Exception e) {
+                    setPaymentStatus(packet.getPacketId(), "ERROR", true, e.getMessage());
                     log.error("Failed to flush packet {} at bridge: {}", packet.getPacketId(), e.getMessage());
                 }
             }

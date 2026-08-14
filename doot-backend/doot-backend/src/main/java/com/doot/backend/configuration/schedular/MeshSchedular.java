@@ -13,7 +13,7 @@ public class MeshSchedular {
 
     private final MeshService meshService;
 
-    @Scheduled(fixedRate = 3000)
+    @Scheduled(fixedRate = 1000)
     public void processMeshPackets() {
         meshService.runGossipRound();
     }

@@ -41,19 +41,27 @@ export interface TransactionDto {
 }
 
 // ---- Mesh packet wire format (documented exactly in the README) ----
-// "MeshPacket { packetId, ttl, createdAt, ciphertext }"
+// "MeshPacket { packetId, ttl, createdAt, ciphertext, hopCount, bridgeNodeId, currentNode, visitedNodes }"
 export interface MeshPacketDto {
   packetId: string;
   ttl: number;
-  createdAt: number;
+  createdAt: number | string;
   ciphertext: string;
+  hopCount?: number;
+  bridgeNodeId?: string;
+  currentNode?: string;
+  visitedNodes?: string[];
 }
 
 // ---- Virtual device (GET /api/mesh/state) ----
-// README: "phone-bridge, the only device with hasInternet=true"
 export interface VirtualDeviceDto {
   deviceId: string;
+  name?: string;
+  vpa?: string;
+  online?: boolean;
+  isBridge?: boolean;
   hasInternet: boolean;
+  connectedNodeIds?: string[];
   packets: MeshPacketDto[];
 }
 

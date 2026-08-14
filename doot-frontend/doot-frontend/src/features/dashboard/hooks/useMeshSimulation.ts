@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AnimatedPacket } from '@/components/organisms/mesh-graph/types';
-import { formatCurrency, formatCurrencyDelta, randomHex, truncateHash } from '@/lib/format';
+import { formatCurrency } from '@/lib/format';
 import {
   DEVICE_ROSTER,
-  MAX_PACKET_TTL,
-  PACKET_SPAWN_INTERVAL_MS,
   SETTLEMENT_INTERVAL_SECONDS,
 } from '@/lib/constants';
 import { useCountdown } from '@/hooks/useCountdown';
-import type { DeviceId, DeviceProfile, LogEntry, LogTag, NetworkMetrics, SimulatedPacket } from '@/types/network';
+import type { DeviceId, LogEntry, LogTag, NetworkMetrics, SimulatedPacket } from '@/types/network';
+import { useMeshState } from '@/api/useMeshState';
+import { apiFetch } from '@/api/client';
+import type { MeshGraphDevice } from '@/components/organisms/mesh-graph/MeshGraph';
+import type { MeshPacketDto, VirtualDeviceDto } from '@/types/api';
 
-const SENDER_CANDIDATES: DeviceId[] = ['alice', 'bob', 'charlie'];
-const RELAY_HUB: DeviceId = 'bob';
-const LEG_DURATION_MS = 900;
+const LEG_DURATION_MS = 750;
 
 interface UseMeshSimulationOptions {
   /** invoked once per completed settlement batch, e.g. to fire a toast */
@@ -20,16 +20,30 @@ interface UseMeshSimulationOptions {
 }
 
 export function useMeshSimulation({ onSettlementBatch }: UseMeshSimulationOptions = {}) {
-  const [devices, setDevices] = useState<Record<DeviceId, DeviceProfile>>(() => structuredClone(DEVICE_ROSTER));
+  // Poll real backend mesh state every 800ms
+  const meshQuery = useMeshState({ refetchIntervalMs: 800 });
+
+  const [devices, setDevices] = useState<Record<string, MeshGraphDevice>>(() => {
+    const initial: Record<string, MeshGraphDevice> = {};
+    Object.entries(DEVICE_ROSTER).forEach(([id, p]) => {
+      initial[id] = {
+        ...p,
+        online: p.connectivity === 'online',
+        connectedNodeIds: id === 'alice' ? ['bob', 'charlie'] : id === 'bob' ? ['bridge', 'charlie', 'alice'] : id === 'charlie' ? ['bridge', 'bob', 'alice'] : ['bob', 'charlie'],
+        packets: [],
+      };
+    });
+    return initial;
+  });
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [queue, setQueue] = useState<SimulatedPacket[]>([]);
   const [animatedPackets, setAnimatedPackets] = useState<AnimatedPacket[]>([]);
-  const [relayingDeviceIds, setRelayingDeviceIds] = useState<Set<DeviceId>>(new Set());
-  const [recentlySettledIds, setRecentlySettledIds] = useState<Set<DeviceId>>(new Set());
-  const [cumulative, setCumulative] = useState({ volumeRouted: 0, hopSum: 0, hopCount: 0 });
+  const [relayingDeviceIds, setRelayingDeviceIds] = useState<Set<string>>(new Set());
+  const [recentlySettledIds] = useState<Set<string>>(new Set());
+  const [cumulative] = useState({ volumeRouted: 0, hopSum: 0, hopCount: 0 });
   const [batchVolume, setBatchVolume] = useState(0);
 
-  const packetSeqRef = useRef(1);
+  const prevPacketNodesRef = useRef<Record<string, string>>({});
   const timeoutIdsRef = useRef<number[]>([]);
   const rafIdsRef = useRef<number[]>([]);
   const isMountedRef = useRef(true);
@@ -43,13 +57,6 @@ export function useMeshSimulation({ onSettlementBatch }: UseMeshSimulationOption
     [],
   );
 
-  const schedule = useCallback((fn: () => void, delayMs: number) => {
-    const id = window.setTimeout(() => {
-      if (isMountedRef.current) fn();
-    }, delayMs);
-    timeoutIdsRef.current.push(id);
-  }, []);
-
   const pushLog = useCallback((tag: LogTag, message: string) => {
     setLogs((current) => {
       const entry: LogEntry = { id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, tag, message, timestamp: Date.now() };
@@ -59,20 +66,20 @@ export function useMeshSimulation({ onSettlementBatch }: UseMeshSimulationOption
 
   /** Animates one hop of a packet's journey from `from` to `to`, driving MeshGraph via state. */
   const animateHop = useCallback(
-    (packetId: string, from: DeviceId, to: DeviceId, color: string, durationMs: number, onDone: () => void) => {
+    (packetId: string, from: string, to: string, color: string, durationMs: number, hopCount?: number, ttl?: number, onDone?: () => void) => {
       const start = performance.now();
       const step = (time: number) => {
         if (!isMountedRef.current) return;
         const t = Math.min(1, (time - start) / durationMs);
         setAnimatedPackets((current) => {
           const others = current.filter((p) => p.id !== packetId);
-          return t < 1 ? [...others, { id: packetId, from, to, progress: t, color }] : others;
+          return t < 1 ? [...others, { id: packetId, from, to, progress: t, color, hopCount, ttl }] : others;
         });
         if (t < 1) {
           const rafId = window.requestAnimationFrame(step);
           rafIdsRef.current.push(rafId);
         } else {
-          onDone();
+          onDone?.();
         }
       };
       const rafId = window.requestAnimationFrame(step);
@@ -81,73 +88,118 @@ export function useMeshSimulation({ onSettlementBatch }: UseMeshSimulationOption
     [],
   );
 
-  const spawnPacket = useCallback(() => {
-    const from = SENDER_CANDIDATES[Math.floor(Math.random() * SENDER_CANDIDATES.length)] as DeviceId;
-    const toCandidates = SENDER_CANDIDATES.filter((id) => id !== from);
-    const to = toCandidates[Math.floor(Math.random() * toCandidates.length)] as DeviceId;
-    const amount = Math.floor(Math.random() * 900) + 50;
-    const hopBudgetUsed = Math.floor(Math.random() * 3) + 1;
-    const hash = `${randomHex(8)}${randomHex(4)}`;
-    const packetId = `pk-${packetSeqRef.current++}`;
-    const color = `hsl(${{ alice: 221, bob: 187, charlie: 271, bridge: 140 }[from]}, 85%, 60%)`;
-
-    const packet: SimulatedPacket = {
-      id: packetId,
-      hash,
-      from,
-      to,
-      currentHolder: from,
-      amount,
-      ttl: MAX_PACKET_TTL - hopBudgetUsed,
-      maxTtl: MAX_PACKET_TTL,
-      hopCount: hopBudgetUsed,
-      status: 'encrypting',
-      createdAt: Date.now(),
-    };
-
-    // Debit sender immediately — optimistic, matches the optimistic-locking ledger model.
-    setDevices((current) => ({ ...current, [from]: { ...current[from], balance: current[from].balance - amount } }));
-    setCumulative((c) => ({ volumeRouted: c.volumeRouted + amount, hopSum: c.hopSum + hopBudgetUsed, hopCount: c.hopCount + 1 }));
-    setQueue((current) => [packet, ...current].slice(0, 10));
-
-    pushLog('crypto', `packet ${truncateHash(hash)} encrypted (AES-256, key wrapped)`);
-
-    // Hop 1: sender -> relay hub
-    setRelayingDeviceIds((current) => new Set(current).add(RELAY_HUB));
-    animateHop(packetId, from, RELAY_HUB, color, LEG_DURATION_MS, () => {
-      pushLog('relay', `${DEVICE_ROSTER[from].name} → Bob : relayed, TTL ${MAX_PACKET_TTL - hopBudgetUsed + 1}→${MAX_PACKET_TTL - hopBudgetUsed}`);
-
-      // Hop 2: relay hub -> bridge
-      animateHop(packetId, RELAY_HUB, 'bridge', color, LEG_DURATION_MS, () => {
-        setRelayingDeviceIds((current) => {
-          const next = new Set(current);
-          next.delete(RELAY_HUB);
-          return next;
-        });
-        pushLog('info', `Bob → Bridge : forwarding ${formatCurrency(amount)}`);
-        setBatchVolume((v) => v + amount);
-
-        schedule(() => {
-          pushLog('ok', `settled: ${from} → ${to} · ${formatCurrencyDelta(amount)}`);
-          setDevices((current) => ({ ...current, [to]: { ...current[to], balance: current[to].balance + amount } }));
-          setRecentlySettledIds((current) => new Set(current).add(to));
-          schedule(() => {
-            setRecentlySettledIds((current) => {
-              const next = new Set(current);
-              next.delete(to);
-              return next;
-            });
-          }, 900);
-          setQueue((current) => current.filter((p) => p.id !== packetId));
-        }, 300);
-      });
-    });
-  }, [animateHop, pushLog, schedule]);
-
+  // Sync real backend devices into devices state when meshQuery returns
   useEffect(() => {
-    const intervalId = window.setInterval(spawnPacket, PACKET_SPAWN_INTERVAL_MS);
-    return () => window.clearInterval(intervalId);
-  }, [spawnPacket]);
+    if (!meshQuery.data) return;
+
+    const nextDevices: Record<string, MeshGraphDevice> = {};
+    const backendData: VirtualDeviceDto[] = meshQuery.data;
+
+    backendData.forEach((device) => {
+      const id = device.deviceId.toLowerCase();
+      const baseProfile = DEVICE_ROSTER[id as DeviceId] || {
+        id,
+        name: device.name || id,
+        vpa: device.vpa || `${id}@doot`,
+        accent: device.isBridge ? 'green' : 'cyan',
+        isBridge: device.isBridge || id === 'bridge',
+        balance: 1000,
+        connectivity: 'online',
+      };
+
+      nextDevices[id] = {
+        id,
+        name: device.name || baseProfile.name,
+        vpa: device.vpa || baseProfile.vpa,
+        accent: baseProfile.accent || (device.isBridge ? 'green' : 'cyan'),
+        isBridge: Boolean(device.isBridge || baseProfile.isBridge),
+        online: device.online !== false,
+        connectivity: baseProfile.connectivity || 'online',
+        connectedNodeIds: device.connectedNodeIds || [],
+        packets: device.packets || [],
+      };
+    });
+
+    setDevices(nextDevices);
+
+    // Collect all active packets from backend
+    const activePackets: MeshPacketDto[] = [];
+    backendData.forEach((d) => {
+      if (d.packets) {
+        d.packets.forEach((p) => {
+          if (!activePackets.some((existing) => existing.packetId === p.packetId)) {
+            activePackets.push(p);
+          }
+        });
+      }
+    });
+
+    // Check node position changes and trigger animated hops
+    activePackets.forEach((packet) => {
+      const pId = packet.packetId;
+      const currNode = (packet.currentNode || 'alice').toLowerCase();
+      const prevNode = prevPacketNodesRef.current[pId];
+
+      if (prevNode && prevNode !== currNode) {
+        const color = `hsl(${{ alice: 221, bob: 187, charlie: 271, bridge: 140 }[prevNode] ?? 187}, 85%, 60%)`;
+        setRelayingDeviceIds((curr) => new Set(curr).add(prevNode));
+        pushLog('relay', `Packet ${pId} gossiped: ${prevNode.toUpperCase()} → ${currNode.toUpperCase()} (TTL: ${packet.ttl}, Hops: ${packet.hopCount ?? 0})`);
+        
+        animateHop(pId, prevNode, currNode, color, LEG_DURATION_MS, packet.hopCount, packet.ttl, () => {
+          setRelayingDeviceIds((curr) => {
+            const next = new Set(curr);
+            next.delete(prevNode);
+            return next;
+          });
+        });
+      }
+      prevPacketNodesRef.current[pId] = currNode;
+    });
+
+    // Cleanup settled packets
+    Object.keys(prevPacketNodesRef.current).forEach((pId) => {
+      if (!activePackets.some((p) => p.packetId === pId)) {
+        delete prevPacketNodesRef.current[pId];
+      }
+    });
+
+    // Update queue items from active packets
+    const queueItems: SimulatedPacket[] = activePackets.map((p) => ({
+      id: p.packetId,
+      hash: p.packetId,
+      from: (p.visitedNodes?.[0] || 'alice') as DeviceId,
+      to: 'bridge' as DeviceId,
+      currentHolder: (p.currentNode || 'alice') as DeviceId,
+      amount: 100,
+      ttl: p.ttl,
+      maxTtl: 5,
+      hopCount: p.hopCount || 0,
+      status: p.currentNode === 'bridge' ? 'settling' : 'relaying',
+      createdAt: typeof p.createdAt === 'number' ? p.createdAt : Date.now(),
+    }));
+    setQueue(queueItems);
+
+  }, [meshQuery.data, animateHop, pushLog]);
+
+  // Quick action to trigger a real payment via backend POST /api/demo/send
+  const sendRealPayment = useCallback(
+    async (senderVpa = 'alice@doot', receiverVpa = 'charlie@doot', amount = 250, pin = '1234') => {
+      try {
+        pushLog('crypto', `Initiating payment ${senderVpa} → ${receiverVpa} (${formatCurrency(amount)})`);
+        const result = await apiFetch<MeshPacketDto>('/demo/send', {
+          method: 'POST',
+          body: JSON.stringify({ sender: senderVpa, receiver: receiverVpa, amount, pin }),
+        });
+        if (result?.packetId) {
+          pushLog('ok', `Packet ${result.packetId} injected into mesh at ${result.currentNode || senderVpa}`);
+          meshQuery.refetch();
+        }
+      } catch (err: any) {
+        pushLog('info', `Failed to send payment: ${err?.message || 'Unknown error'}`);
+      }
+    },
+    [meshQuery, pushLog],
+  );
 
   const handleSettlementComplete = useCallback(() => {
     onSettlementBatch?.(batchVolume);
@@ -156,14 +208,29 @@ export function useMeshSimulation({ onSettlementBatch }: UseMeshSimulationOption
 
   const secondsUntilNextBatch = useCountdown(SETTLEMENT_INTERVAL_SECONDS, 100, handleSettlementComplete);
 
+  const activeBackendPackets = useMemo(() => {
+    if (!meshQuery.data) return [];
+    const list: MeshPacketDto[] = [];
+    meshQuery.data.forEach((d) => {
+      if (d.packets) {
+        d.packets.forEach((p) => {
+          if (!list.some((item) => item.packetId === p.packetId)) {
+            list.push(p);
+          }
+        });
+      }
+    });
+    return list;
+  }, [meshQuery.data]);
+
   const metrics: NetworkMetrics = useMemo(
     () => ({
-      packetsInTransit: animatedPackets.length,
+      packetsInTransit: activeBackendPackets.length,
       totalVolumeRouted: cumulative.volumeRouted,
       averageHopCount: cumulative.hopCount === 0 ? 0 : cumulative.hopSum / cumulative.hopCount,
       activeDeviceCount: Object.values(devices).filter((d) => !d.isBridge).length,
     }),
-    [animatedPackets.length, cumulative, devices],
+    [activeBackendPackets.length, cumulative, devices],
   );
 
   return {
@@ -171,9 +238,12 @@ export function useMeshSimulation({ onSettlementBatch }: UseMeshSimulationOption
     logs,
     queue,
     animatedPackets,
+    activeBackendPackets,
     relayingDeviceIds,
     recentlySettledIds,
     metrics,
+    sendRealPayment,
+    refetchMeshState: meshQuery.refetch,
     settlement: {
       secondsUntilNextBatch,
       batchIntervalSeconds: SETTLEMENT_INTERVAL_SECONDS,
@@ -182,3 +252,4 @@ export function useMeshSimulation({ onSettlementBatch }: UseMeshSimulationOption
     },
   };
 }
+

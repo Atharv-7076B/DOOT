@@ -56,6 +56,11 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/api/accounts || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   doot-frontend:
     build:
@@ -65,7 +70,8 @@ services:
     ports:
       - "80:80"
     depends_on:
-      - doot-backend
+      doot-backend:
+        condition: service_healthy
 
 volumes:
   postgres_data:
