@@ -107,8 +107,10 @@ public class MeshServiceImpl implements MeshService {
                             " | Hops: " + packet.getHopCount()
             );
 
+            packet.setCurrentNode(neighbor);
             String key =
                     "packet:" + packet.getPacketId() + ":" + neighbor;
+
 
             redisTemplate.opsForValue().set(key, packet);
         }

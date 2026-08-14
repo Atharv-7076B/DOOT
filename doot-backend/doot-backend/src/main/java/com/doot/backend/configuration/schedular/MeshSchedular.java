@@ -28,7 +28,7 @@ public class MeshSchedular {
             if(packet == null)
                 return;
 
-            meshService.gossip(packet,"A");
+            meshService.gossip(packet,packet.getCurrentNode());
 
             redisTemplate.delete(key);//Remove the packet after processing
         }

@@ -61,7 +61,7 @@ public class PaymentServiceImpl implements PaymentService {
         meshPacket.setTtl(request.getTtl());
         meshPacket.setCipherText(cipherText);
         meshPacket.setCreatedAt(Instant.now());
-
+        meshPacket.setCurrentNode("A");
         return meshService.injectPacket(meshPacket);
     }
 }

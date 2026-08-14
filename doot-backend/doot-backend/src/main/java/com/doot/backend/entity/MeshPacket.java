@@ -20,4 +20,5 @@ public class MeshPacket {
     private String cipherText;//Base64(RSA-encrypted AES key + AES-GCM ciphertext)
     private int hopCount;
     private String bridgeNodeId;
+    private String currentNode;
 }
