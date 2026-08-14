@@ -18,4 +18,6 @@ public class MeshPacket {
     private int ttl;//It tells hops remaining
     private Instant createdAt;//Time when the packet it created
     private String cipherText;//Base64(RSA-encrypted AES key + AES-GCM ciphertext)
+    private int hopCount;
+    private String bridgeNodeId;
 }
