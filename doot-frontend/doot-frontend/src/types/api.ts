@@ -87,3 +87,31 @@ export interface BridgeIngestResult {
   reason: string | null;
   transactionId: number | null;
 }
+
+// ---- GET /api/mesh/packets ----
+export type PacketExplorerStatus = 'IN_MESH' | 'RELAYING' | 'BRIDGED' | 'SETTLED' | 'EXPIRED' | 'ERROR';
+
+export interface PacketExplorerDto {
+  packetId: string;
+  status: PacketExplorerStatus;
+  currentNode: string;
+  ttl: number;
+  hopCount: number;
+  bridgeNodeId?: string | null;
+  createdAt: string;
+  visitedNodes: string[];
+  encryption: string;
+  keyWrapping: string;
+  replayProtectionStatus: string;
+  ciphertext: string;
+  packetHash: string;
+  pinExposed: boolean;
+  lifecycleStep: number;
+  lifecycleStages: string[];
+  redisPacketKey: string;
+  inRedis: boolean;
+  seenNodes: string[];
+  processedKey: string;
+  processedInRedis: boolean;
+}
+

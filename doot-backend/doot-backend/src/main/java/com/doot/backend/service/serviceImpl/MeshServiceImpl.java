@@ -1,7 +1,10 @@
 package com.doot.backend.service.serviceImpl;
 
+import com.doot.backend.crypto.HybridCryptoService;
+import com.doot.backend.dto.PacketExplorerDto;
 import com.doot.backend.dto.VirtualDeviceDto;
 import com.doot.backend.entity.MeshPacket;
+import com.doot.backend.repository.TransactionRepository;
 import com.doot.backend.service.BridgeService;
 import com.doot.backend.service.MeshService;
 import lombok.RequiredArgsConstructor;
@@ -10,6 +13,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -21,11 +25,14 @@ public class MeshServiceImpl implements MeshService {
 
     private final RedisTemplate<String, MeshPacket> redisTemplate;
     private final BridgeService bridgeService;
+    private final HybridCryptoService hybridCryptoService;
+    private final TransactionRepository transactionRepository;
 
     private static final String ACTIVE_PACKETS_SET = "active_packet_ids";
 
-    // In-memory fallback if local Redis server is not running
+    // In-memory tracking & fallbacks
     private final Map<String, MeshPacket> inMemoryPackets = new ConcurrentHashMap<>();
+    private final Map<String, MeshPacket> allTrackedPackets = new ConcurrentHashMap<>();
     private final Set<String> inMemoryActiveSet = ConcurrentHashMap.newKeySet();
     private final Set<String> inMemorySeenSet = ConcurrentHashMap.newKeySet();
     private final Map<String, Map<String, Object>> inMemoryStatusMap = new ConcurrentHashMap<>();
@@ -76,6 +83,7 @@ public class MeshServiceImpl implements MeshService {
         String key = "packet:" + packetId;
 
         inMemoryPackets.put(packetId, packet);
+        allTrackedPackets.put(packetId, packet);
         inMemoryActiveSet.add(packetId);
 
         try {
@@ -186,6 +194,7 @@ public class MeshServiceImpl implements MeshService {
                 currentNode, packetId, nextHop, packet.getTtl(), packet.getHopCount());
 
         inMemoryPackets.put(packetId, packet);
+        allTrackedPackets.put(packetId, packet);
         String key = "packet:" + packetId;
         try {
             redisTemplate.opsForValue().set(key, packet);
@@ -311,6 +320,7 @@ public class MeshServiceImpl implements MeshService {
             removePacket(packet.getPacketId());
         }
         inMemoryPackets.clear();
+        allTrackedPackets.clear();
         inMemoryActiveSet.clear();
         inMemorySeenSet.clear();
 
@@ -319,6 +329,179 @@ public class MeshServiceImpl implements MeshService {
         } catch (Exception e) {
             // Redis fallback
         }
+    }
+
+    @Override
+    public List<PacketExplorerDto> getPacketExplorerList() {
+        Map<String, MeshPacket> combined = new LinkedHashMap<>();
+
+        // 1. Add active packets
+        List<MeshPacket> activePackets = getAllActivePackets();
+        for (MeshPacket p : activePackets) {
+            if (p != null && p.getPacketId() != null) {
+                combined.put(p.getPacketId(), p);
+                allTrackedPackets.put(p.getPacketId(), p);
+            }
+        }
+
+        // 2. Include all tracked packets (including historical / settled)
+        for (Map.Entry<String, MeshPacket> entry : allTrackedPackets.entrySet()) {
+            if (!combined.containsKey(entry.getKey())) {
+                combined.put(entry.getKey(), entry.getValue());
+            }
+        }
+
+        List<PacketExplorerDto> dtos = new ArrayList<>();
+        for (MeshPacket packet : combined.values()) {
+            PacketExplorerDto dto = buildPacketExplorerDto(packet);
+            if (dto != null) {
+                dtos.add(dto);
+            }
+        }
+
+        // Sort descending by createdAt
+        dtos.sort((a, b) -> {
+            if (a.getCreatedAt() == null || b.getCreatedAt() == null) return 0;
+            return b.getCreatedAt().compareTo(a.getCreatedAt());
+        });
+
+        return dtos;
+    }
+
+    @Override
+    public PacketExplorerDto getPacketExplorerDetails(String packetId) {
+        if (packetId == null) return null;
+        MeshPacket packet = getPacket(packetId);
+        if (packet == null) {
+            packet = allTrackedPackets.get(packetId);
+        }
+        if (packet == null) return null;
+        return buildPacketExplorerDto(packet);
+    }
+
+    private PacketExplorerDto buildPacketExplorerDto(MeshPacket packet) {
+        if (packet == null || packet.getPacketId() == null) return null;
+
+        String packetId = packet.getPacketId();
+        String currentNode = packet.getCurrentNode() != null ? packet.getCurrentNode() : "alice";
+        int ttl = packet.getTtl();
+        int hopCount = packet.getHopCount();
+        String bridgeNodeId = packet.getBridgeNodeId();
+        Instant createdAt = packet.getCreatedAt() != null ? packet.getCreatedAt() : Instant.now();
+        List<String> visitedNodes = packet.getVisitedNodes() != null ? new ArrayList<>(packet.getVisitedNodes()) : new ArrayList<>();
+        String ciphertext = packet.getCipherText();
+
+        // 1. Calculate Packet Hash
+        String packetHash = "unknown";
+        if (ciphertext != null && hybridCryptoService != null) {
+            try {
+                packetHash = hybridCryptoService.hashCipherText(ciphertext);
+            } catch (Exception e) {
+                log.debug("Error hashing ciphertext for packet {}", packetId, e);
+            }
+        }
+
+        // 2. Status & Lifecycle Step
+        Map<String, Object> statusMap = getPaymentStatus(packetId);
+        String stageStr = statusMap != null ? (String) statusMap.get("stage") : "UNKNOWN";
+
+        boolean isSettled = "SETTLED".equalsIgnoreCase(stageStr) ||
+                (transactionRepository != null && !packetHash.equals("unknown") && transactionRepository.existsByPacketHash(packetHash));
+
+        String status;
+        int lifecycleStep;
+
+        if (isSettled) {
+            status = "SETTLED";
+            lifecycleStep = 7;
+        } else if ("EXPIRED".equalsIgnoreCase(stageStr) || ttl <= 0) {
+            status = "EXPIRED";
+            lifecycleStep = 4;
+        } else if ("ERROR".equalsIgnoreCase(stageStr)) {
+            status = "ERROR";
+            lifecycleStep = 4;
+        } else if (isBridgeNode(currentNode) || bridgeNodeId != null) {
+            status = "BRIDGED";
+            lifecycleStep = 5;
+        } else if (hopCount > 0) {
+            status = "RELAYING";
+            lifecycleStep = 4;
+        } else {
+            status = "IN_MESH";
+            lifecycleStep = 3;
+        }
+
+        List<String> lifecycleStages = List.of(
+                "Created",
+                "Encrypted",
+                "Injected",
+                "In Mesh",
+                "Bridge Received",
+                "Decrypted & Validated",
+                "Settled"
+        );
+
+        // 3. Security Info
+        String replayProtectionStatus;
+        if (isSettled) {
+            replayProtectionStatus = "SETTLED & REPLAY PROTECTED";
+        } else {
+            replayProtectionStatus = "ACTIVE (Monitoring Replays)";
+        }
+
+        // 4. Redis State
+        String redisPacketKey = "packet:" + packetId;
+        boolean inRedis = false;
+        try {
+            if (redisTemplate != null && Boolean.TRUE.equals(redisTemplate.hasKey(redisPacketKey))) {
+                inRedis = true;
+            }
+        } catch (Exception ignored) {}
+        if (inMemoryPackets.containsKey(packetId)) {
+            inRedis = true;
+        }
+
+        List<String> knownNodes = List.of("alice", "bob", "charlie", "bridge");
+        List<String> seenNodes = new ArrayList<>();
+        for (String node : knownNodes) {
+            String seenKey = "seen:" + packetId + ":" + node;
+            boolean seen = inMemorySeenSet.contains(seenKey);
+            try {
+                if (redisTemplate != null && Boolean.TRUE.equals(redisTemplate.hasKey(seenKey))) {
+                    seen = true;
+                }
+            } catch (Exception ignored) {}
+            if (seen) {
+                seenNodes.add(node);
+            }
+        }
+
+        String processedKey = "processed:" + packetHash;
+        boolean processedInRedis = isSettled;
+
+        return PacketExplorerDto.builder()
+                .packetId(packetId)
+                .status(status)
+                .currentNode(currentNode)
+                .ttl(ttl)
+                .hopCount(hopCount)
+                .bridgeNodeId(bridgeNodeId)
+                .createdAt(createdAt)
+                .visitedNodes(visitedNodes)
+                .encryption("AES-256-GCM")
+                .keyWrapping("RSA-2048 OAEP")
+                .replayProtectionStatus(replayProtectionStatus)
+                .ciphertext(ciphertext)
+                .packetHash(packetHash)
+                .pinExposed(false)
+                .lifecycleStep(lifecycleStep)
+                .lifecycleStages(lifecycleStages)
+                .redisPacketKey(redisPacketKey)
+                .inRedis(inRedis)
+                .seenNodes(seenNodes)
+                .processedKey(processedKey)
+                .processedInRedis(processedInRedis)
+                .build();
     }
 
     private List<MeshPacket> getAllActivePackets() {

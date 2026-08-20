@@ -11,4 +11,9 @@ export const queryKeys = {
     all: ['mesh'] as const,
     state: () => [...queryKeys.mesh.all, 'state'] as const,
   },
+  packets: {
+    all: ['packets'] as const,
+    list: () => [...queryKeys.packets.all, 'list'] as const,
+    detail: (id: string) => [...queryKeys.packets.all, 'detail', id] as const,
+  },
 } as const;

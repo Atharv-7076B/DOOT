@@ -1,47 +1,68 @@
-import { Lock, KeyRound, ShieldCheck, Radio, UploadCloud } from 'lucide-react';
+import { Lock, KeyRound, Radio, UploadCloud, ShieldCheck, CheckCircle2, FilePlus } from 'lucide-react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
 const STAGES = [
-  { icon: Lock, title: 'AES-256-GCM', desc: 'Payload encrypted with a fresh per-packet key' },
-  { icon: KeyRound, title: 'RSA-OAEP', desc: "AES key wrapped with the server's public key" },
-  { icon: ShieldCheck, title: 'Opaque', desc: 'Intermediates see ciphertext only' },
-  { icon: Radio, title: 'Relaying', desc: 'Hopping device to device' },
-  { icon: UploadCloud, title: 'Bridge-ready', desc: 'Held by a device with internet' },
+  { step: 1, icon: FilePlus, title: 'Created', desc: 'Payload structure initialized on sender device' },
+  { step: 2, icon: Lock, title: 'Encrypted', desc: 'AES-256-GCM + RSA-2048 OAEP envelope encryption' },
+  { step: 3, icon: KeyRound, title: 'Injected', desc: 'Packet loaded into local storage and queued' },
+  { step: 4, icon: Radio, title: 'In Mesh', desc: 'Relaying hop-by-hop across mesh peer devices' },
+  { step: 5, icon: UploadCloud, title: 'Bridge Received', desc: 'Arrived at internet-connected gateway bridge node' },
+  { step: 6, icon: ShieldCheck, title: 'Decrypted & Validated', desc: 'Bridge RSA decrypted payload & validated PIN/nonce' },
+  { step: 7, icon: CheckCircle2, title: 'Settled', desc: 'Transaction written to database & settled on ledger' },
 ] as const;
 
-export function EncryptionLifecycle({ heldByBridge }: { heldByBridge: boolean }) {
+interface EncryptionLifecycleProps {
+  lifecycleStep?: number;
+  status?: string;
+}
+
+export function EncryptionLifecycle({ lifecycleStep = 3, status }: EncryptionLifecycleProps) {
   const reduceMotion = useReducedMotion();
-  // The first three stages are always true for any packet that exists in mesh state —
-  // it was encrypted client-side before ever being broadcast. The last two reflect
-  // this specific packet's current position.
-  const activeIndex = heldByBridge ? 4 : 3;
+  const currentStep = status === 'SETTLED' ? 7 : (lifecycleStep ?? 3);
 
   return (
-    <div role="list" aria-label="Encryption lifecycle" className="grid grid-cols-5 gap-2">
-      {STAGES.map((stage, index) => {
-        const isComplete = index < activeIndex;
-        const isActive = index === activeIndex;
-        return (
-          <div key={stage.title} role="listitem" className="flex flex-col items-center gap-1.5 text-center">
-            <motion.div
-              animate={isActive && !reduceMotion ? { scale: [1, 1.08, 1] } : undefined}
-              transition={{ duration: 1.4, repeat: isActive ? Infinity : 0 }}
-              className={cn(
-                'flex h-9 w-9 items-center justify-center rounded-full border',
-                isComplete && 'border-mesh-green bg-mesh-green/10 text-mesh-green',
-                isActive && 'border-mesh-cyan bg-mesh-cyan/10 text-mesh-cyan',
-                !isComplete && !isActive && 'border-border bg-surface text-muted-foreground',
-              )}
-            >
-              <stage.icon className="h-3.5 w-3.5" aria-hidden="true" />
-            </motion.div>
-            <div className="text-[10px] font-medium leading-tight">{stage.title}</div>
-          </div>
-        );
-      })}
+    <div className="flex flex-col gap-3">
+      <div role="list" aria-label="Packet lifecycle progress" className="grid grid-cols-7 gap-1.5 sm:gap-2">
+        {STAGES.map((stage) => {
+          const isComplete = stage.step < currentStep;
+          const isActive = stage.step === currentStep;
+
+          return (
+            <div key={stage.title} role="listitem" className="flex flex-col items-center gap-1.5 text-center">
+              <motion.div
+                animate={isActive && !reduceMotion ? { scale: [1, 1.08, 1] } : undefined}
+                transition={{ duration: 1.4, repeat: isActive ? Infinity : 0 }}
+                className={cn(
+                  'flex h-8 w-8 items-center justify-center rounded-full border transition-all sm:h-9 sm:w-9',
+                  isComplete && 'border-mesh-green bg-mesh-green/15 text-mesh-green shadow-sm',
+                  isActive && 'border-mesh-cyan bg-mesh-cyan/15 text-mesh-cyan shadow-sm ring-2 ring-mesh-cyan/20',
+                  !isComplete && !isActive && 'border-border bg-surface text-muted-foreground/50',
+                )}
+              >
+                <stage.icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" aria-hidden="true" />
+              </motion.div>
+
+              <div className="flex flex-col items-center gap-0.5">
+                <span className="font-mono text-[9px] text-muted-foreground/70">Step {stage.step}</span>
+                <span
+                  className={cn(
+                    'text-[10px] font-medium leading-tight',
+                    isComplete && 'text-mesh-green',
+                    isActive && 'font-semibold text-mesh-cyan',
+                    !isComplete && !isActive && 'text-muted-foreground/60',
+                  )}
+                >
+                  {stage.title}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
       <p className="sr-only">
-        {STAGES.map((s) => s.desc).join('. ')}
+        {STAGES.map((s) => `${s.title}: ${s.desc}`).join('. ')}
       </p>
     </div>
   );

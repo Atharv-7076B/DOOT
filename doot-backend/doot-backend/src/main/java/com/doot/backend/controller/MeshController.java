@@ -21,6 +21,20 @@ public class MeshController {
         return meshService.getMeshState();
     }
 
+    @GetMapping("/packets")
+    public List<com.doot.backend.dto.PacketExplorerDto> getPacketExplorerList() {
+        return meshService.getPacketExplorerList();
+    }
+
+    @GetMapping("/packets/{packetId}")
+    public ResponseEntity<com.doot.backend.dto.PacketExplorerDto> getPacketExplorerDetails(@PathVariable String packetId) {
+        com.doot.backend.dto.PacketExplorerDto dto = meshService.getPacketExplorerDetails(packetId);
+        if (dto == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(dto);
+    }
+
     @PostMapping("/gossip")
     public ResponseEntity<Map<String, String>> triggerGossip() {
         meshService.runGossipRound();

@@ -19,6 +19,10 @@ public interface MeshService {
 
     List<VirtualDeviceDto> getMeshState();
 
+    List<com.doot.backend.dto.PacketExplorerDto> getPacketExplorerList();
+
+    com.doot.backend.dto.PacketExplorerDto getPacketExplorerDetails(String packetId);
+
     void runGossipRound();
 
     void flushBridges();

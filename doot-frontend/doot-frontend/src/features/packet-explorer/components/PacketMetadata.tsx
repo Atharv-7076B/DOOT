@@ -2,9 +2,9 @@ import { usePacketDecoding } from '@/features/packet-explorer/hooks/usePacketDec
 import { CopyableField } from '@/components/molecules/CopyableField';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatTimestamp } from '@/lib/format';
-import type { FlatPacket } from '@/features/packet-explorer/hooks/usePacketExplorer';
+import type { PacketExplorerDto } from '@/types/api';
 
-export function PacketMetadata({ packet }: { packet: FlatPacket }) {
+export function PacketMetadata({ packet }: { packet: PacketExplorerDto }) {
   const { segments, hash, isHashing } = usePacketDecoding(packet.ciphertext);
 
   return (
@@ -12,7 +12,7 @@ export function PacketMetadata({ packet }: { packet: FlatPacket }) {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Field label="Packet ID" value={packet.packetId} />
         <Field label="Created" value={formatTimestamp(new Date(packet.createdAt))} />
-        <Field label="Held by" value={`${packet.holderDeviceId}${packet.holderHasInternet ? ' (online)' : ''}`} />
+        <Field label="Held by" value={`${packet.currentNode}`} />
       </div>
 
       <CopyableField label="SHA-256 Hash (idempotency key)" value={isHashing || !hash ? 'computing…' : hash} />
